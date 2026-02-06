@@ -4,5 +4,8 @@
     {
         public int Id { get; set; }
         public string? Name { get; set; }
+
+        // Navigation properties
+        public ICollection<Doctor> Doctors { get; set; } = new List<Doctor>();
     }
 }
