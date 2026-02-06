@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Hospital_Management.Api.Data;
+using Microsoft.AspNetCore.Authorization;
 using Hospital_Management.Api.DTOs.Doctors;
 using Hospital_Management.Api.Filters;
 using Hospital_Management.Api.Models.Doctors;
+using Hospital_Management.Api.Repositories.Interfaces;
 
 namespace Hospital_Management.Api.Controllers
 {
@@ -11,13 +11,14 @@ namespace Hospital_Management.Api.Controllers
     [Route("api/[controller]")]
     [ValidateModel]
     [ApiResponseWrapper]
+    [Authorize(Roles = "Admin,Doctor")]
     public class DoctorsController : ControllerBase
     {
-        private readonly HospitalDbContext _context;
+        private readonly IDoctorRepository _repo;
 
-        public DoctorsController(HospitalDbContext context)
+        public DoctorsController(IDoctorRepository repo)
         {
-            _context = context;
+            _repo = repo;
         }
 
         // ───────────── DOCTORS ─────────────
@@ -25,15 +26,13 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAllDoctors()
         {
-            var doctors = await _context.Doctors
-                .Include(d => d.Department)
-                .Include(d => d.Specialization)
+            var doctors = (await _repo.GetAllDoctorsAsync())
                 .Select(d => new DoctorDto
                 {
                     Id = d.Id, FullName = d.FullName,
                     DepartmentId = d.DepartmentId, SpecializationId = d.SpecializationId,
                     DepartmentName = d.Department!.Name, SpecializationName = d.Specialization!.Name
-                }).ToListAsync();
+                }).ToList();
 
             return Ok(doctors);
         }
@@ -41,19 +40,15 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetDoctorById(int id)
         {
-            var doctor = await _context.Doctors
-                .Include(d => d.Department)
-                .Include(d => d.Specialization)
-                .Where(d => d.Id == id)
-                .Select(d => new DoctorDto
-                {
-                    Id = d.Id, FullName = d.FullName,
-                    DepartmentId = d.DepartmentId, SpecializationId = d.SpecializationId,
-                    DepartmentName = d.Department!.Name, SpecializationName = d.Specialization!.Name
-                }).FirstOrDefaultAsync();
+            var d = await _repo.GetDoctorByIdAsync(id);
+            if (d == null) return NotFound();
 
-            if (doctor == null) return NotFound();
-            return Ok(doctor);
+            return Ok(new DoctorDto
+            {
+                Id = d.Id, FullName = d.FullName,
+                DepartmentId = d.DepartmentId, SpecializationId = d.SpecializationId,
+                DepartmentName = d.Department!.Name, SpecializationName = d.Specialization!.Name
+            });
         }
 
         [HttpPost]
@@ -65,33 +60,29 @@ namespace Hospital_Management.Api.Controllers
                 SpecializationId = dto.SpecializationId
             };
 
-            _context.Doctors.Add(doctor);
-            await _context.SaveChangesAsync();
+            await _repo.AddDoctorAsync(doctor);
             return CreatedAtAction(nameof(GetDoctorById), new { id = doctor.Id }, dto);
         }
 
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateDoctor(int id, UpdateDoctorDto dto)
         {
-            var doctor = await _context.Doctors.FindAsync(id);
+            var doctor = await _repo.GetDoctorByIdAsync(id);
             if (doctor == null) return NotFound();
 
             doctor.FullName = dto.FullName;
             doctor.DepartmentId = dto.DepartmentId;
             doctor.SpecializationId = dto.SpecializationId;
 
-            await _context.SaveChangesAsync();
+            await _repo.SaveChangesAsync();
             return NoContent();
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteDoctor(int id)
         {
-            var doctor = await _context.Doctors.FindAsync(id);
-            if (doctor == null) return NotFound();
-
-            _context.Doctors.Remove(doctor);
-            await _context.SaveChangesAsync();
+            var deleted = await _repo.DeleteDoctorAsync(id);
+            if (!deleted) return NotFound();
             return NoContent();
         }
 
@@ -100,9 +91,9 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet("departments")]
         public async Task<IActionResult> GetAllDepartments()
         {
-            var departments = await _context.Departments
+            var departments = (await _repo.GetAllDepartmentsAsync())
                 .Select(d => new DepartmentDto { Id = d.Id, Name = d.Name })
-                .ToListAsync();
+                .ToList();
 
             return Ok(departments);
         }
@@ -110,43 +101,35 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet("departments/{id}")]
         public async Task<IActionResult> GetDepartmentById(int id)
         {
-            var dept = await _context.Departments
-                .Where(d => d.Id == id)
-                .Select(d => new DepartmentDto { Id = d.Id, Name = d.Name })
-                .FirstOrDefaultAsync();
-
+            var dept = await _repo.GetDepartmentByIdAsync(id);
             if (dept == null) return NotFound();
-            return Ok(dept);
+            return Ok(new DepartmentDto { Id = dept.Id, Name = dept.Name });
         }
 
         [HttpPost("departments")]
         public async Task<IActionResult> CreateDepartment(CreateDepartmentDto dto)
         {
             var dept = new Department { Name = dto.Name };
-            _context.Departments.Add(dept);
-            await _context.SaveChangesAsync();
+            await _repo.AddDepartmentAsync(dept);
             return Created($"api/doctors/departments/{dept.Id}", new DepartmentDto { Id = dept.Id, Name = dept.Name });
         }
 
         [HttpPut("departments/{id}")]
         public async Task<IActionResult> UpdateDepartment(int id, UpdateDepartmentDto dto)
         {
-            var dept = await _context.Departments.FindAsync(id);
+            var dept = await _repo.GetDepartmentByIdAsync(id);
             if (dept == null) return NotFound();
 
             dept.Name = dto.Name;
-            await _context.SaveChangesAsync();
+            await _repo.SaveChangesAsync();
             return NoContent();
         }
 
         [HttpDelete("departments/{id}")]
         public async Task<IActionResult> DeleteDepartment(int id)
         {
-            var dept = await _context.Departments.FindAsync(id);
-            if (dept == null) return NotFound();
-
-            _context.Departments.Remove(dept);
-            await _context.SaveChangesAsync();
+            var deleted = await _repo.DeleteDepartmentAsync(id);
+            if (!deleted) return NotFound();
             return NoContent();
         }
 
@@ -155,9 +138,9 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet("specializations")]
         public async Task<IActionResult> GetAllSpecializations()
         {
-            var specs = await _context.DoctorSpecializations
+            var specs = (await _repo.GetAllSpecializationsAsync())
                 .Select(s => new DoctorSpecializationDto { Id = s.Id, Name = s.Name })
-                .ToListAsync();
+                .ToList();
 
             return Ok(specs);
         }
@@ -165,43 +148,35 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet("specializations/{id}")]
         public async Task<IActionResult> GetSpecializationById(int id)
         {
-            var spec = await _context.DoctorSpecializations
-                .Where(s => s.Id == id)
-                .Select(s => new DoctorSpecializationDto { Id = s.Id, Name = s.Name })
-                .FirstOrDefaultAsync();
-
+            var spec = await _repo.GetSpecializationByIdAsync(id);
             if (spec == null) return NotFound();
-            return Ok(spec);
+            return Ok(new DoctorSpecializationDto { Id = spec.Id, Name = spec.Name });
         }
 
         [HttpPost("specializations")]
         public async Task<IActionResult> CreateSpecialization(CreateDoctorSpecializationDto dto)
         {
             var spec = new DoctorSpecialization { Name = dto.Name };
-            _context.DoctorSpecializations.Add(spec);
-            await _context.SaveChangesAsync();
+            await _repo.AddSpecializationAsync(spec);
             return Created($"api/doctors/specializations/{spec.Id}", new DoctorSpecializationDto { Id = spec.Id, Name = spec.Name });
         }
 
         [HttpPut("specializations/{id}")]
         public async Task<IActionResult> UpdateSpecialization(int id, UpdateDoctorSpecializationDto dto)
         {
-            var spec = await _context.DoctorSpecializations.FindAsync(id);
+            var spec = await _repo.GetSpecializationByIdAsync(id);
             if (spec == null) return NotFound();
 
             spec.Name = dto.Name;
-            await _context.SaveChangesAsync();
+            await _repo.SaveChangesAsync();
             return NoContent();
         }
 
         [HttpDelete("specializations/{id}")]
         public async Task<IActionResult> DeleteSpecialization(int id)
         {
-            var spec = await _context.DoctorSpecializations.FindAsync(id);
-            if (spec == null) return NotFound();
-
-            _context.DoctorSpecializations.Remove(spec);
-            await _context.SaveChangesAsync();
+            var deleted = await _repo.DeleteSpecializationAsync(id);
+            if (!deleted) return NotFound();
             return NoContent();
         }
     }

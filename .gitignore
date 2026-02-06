@@ -10,6 +10,12 @@
 *.userosscache
 *.sln.docstates
 
+# Local dev settings (connection strings, secrets)
+appsettings.Development.json
+
+# EF Core Migrations (generated per environment)
+**/Migrations/
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 

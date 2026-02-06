@@ -3,10 +3,6 @@ using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace Hospital_Management.Api.Filters
 {
-    /// <summary>
-    /// Result filter that wraps all successful API responses in a standard envelope.
-    /// Response format: { success: true, message: "...", data: ... }
-    /// </summary>
     public class ApiResponseWrapperAttribute : ResultFilterAttribute
     {
         public override void OnResultExecuting(ResultExecutingContext context)

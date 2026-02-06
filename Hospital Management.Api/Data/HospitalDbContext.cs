@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Hospital_Management.Api.Models.Admissions;
 using Hospital_Management.Api.Models.Appointments;
+using Hospital_Management.Api.Models.Auth;
 using Hospital_Management.Api.Models.Billing;
 using Hospital_Management.Api.Models.Doctors;
 using Hospital_Management.Api.Models.Labs;
@@ -51,6 +52,9 @@ namespace Hospital_Management.Api.Data
         public DbSet<Prescription> Prescriptions { get; set; }
         public DbSet<PrescriptionItem> PrescriptionItems { get; set; }
         public DbSet<Medicine> Medicines { get; set; }
+
+        // Auth
+        public DbSet<User> Users { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -198,6 +202,11 @@ namespace Hospital_Management.Api.Data
             modelBuilder.Entity<BillItem>()
                 .Property(bi => bi.Amount)
                 .HasColumnType("decimal(18,2)");
+
+            // User – unique email index
+            modelBuilder.Entity<User>()
+                .HasIndex(u => u.Email)
+                .IsUnique();
         }
     }
 }

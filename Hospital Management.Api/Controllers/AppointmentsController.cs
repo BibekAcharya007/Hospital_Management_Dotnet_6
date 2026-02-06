@@ -1,11 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Hospital_Management.Api.Data;
+using Microsoft.AspNetCore.Authorization;
 using Hospital_Management.Api.DTOs.Appointments;
 using Hospital_Management.Api.DTOs.Admissions;
 using Hospital_Management.Api.Filters;
 using Hospital_Management.Api.Models.Appointments;
 using Hospital_Management.Api.Models.Admissions;
+using Hospital_Management.Api.Repositories.Interfaces;
 
 namespace Hospital_Management.Api.Controllers
 {
@@ -13,13 +13,14 @@ namespace Hospital_Management.Api.Controllers
     [Route("api/[controller]")]
     [ValidateModel]
     [ApiResponseWrapper]
+    [Authorize(Roles = "Admin,Doctor,Patient")]
     public class AppointmentsController : ControllerBase
     {
-        private readonly HospitalDbContext _context;
+        private readonly IAppointmentRepository _repo;
 
-        public AppointmentsController(HospitalDbContext context)
+        public AppointmentsController(IAppointmentRepository repo)
         {
-            _context = context;
+            _repo = repo;
         }
 
         // ───────────── APPOINTMENTS ─────────────
@@ -27,14 +28,14 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAllAppointments()
         {
-            var appointments = await _context.Appointments
+            var appointments = (await _repo.GetAllAppointmentsAsync())
                 .Select(a => new AppointmentDto
                 {
                     Id = a.Id, PatientId = a.PatientId, DoctorId = a.DoctorId,
                     AppointmentDate = a.AppointmentDate, StatusId = a.StatusId,
                     PatientName = a.Patient!.FullName, DoctorName = a.Doctor!.FullName,
                     StatusName = a.Status!.Name
-                }).ToListAsync();
+                }).ToList();
 
             return Ok(appointments);
         }
@@ -42,18 +43,16 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetAppointmentById(int id)
         {
-            var appointment = await _context.Appointments
-                .Where(a => a.Id == id)
-                .Select(a => new AppointmentDto
-                {
-                    Id = a.Id, PatientId = a.PatientId, DoctorId = a.DoctorId,
-                    AppointmentDate = a.AppointmentDate, StatusId = a.StatusId,
-                    PatientName = a.Patient!.FullName, DoctorName = a.Doctor!.FullName,
-                    StatusName = a.Status!.Name
-                }).FirstOrDefaultAsync();
+            var a = await _repo.GetAppointmentByIdAsync(id);
+            if (a == null) return NotFound();
 
-            if (appointment == null) return NotFound();
-            return Ok(appointment);
+            return Ok(new AppointmentDto
+            {
+                Id = a.Id, PatientId = a.PatientId, DoctorId = a.DoctorId,
+                AppointmentDate = a.AppointmentDate, StatusId = a.StatusId,
+                PatientName = a.Patient!.FullName, DoctorName = a.Doctor!.FullName,
+                StatusName = a.Status!.Name
+            });
         }
 
         [HttpPost]
@@ -65,32 +64,28 @@ namespace Hospital_Management.Api.Controllers
                 AppointmentDate = dto.AppointmentDate, StatusId = dto.StatusId
             };
 
-            _context.Appointments.Add(appointment);
-            await _context.SaveChangesAsync();
+            await _repo.AddAppointmentAsync(appointment);
             return CreatedAtAction(nameof(GetAppointmentById), new { id = appointment.Id }, dto);
         }
 
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateAppointment(int id, UpdateAppointmentDto dto)
         {
-            var appointment = await _context.Appointments.FindAsync(id);
+            var appointment = await _repo.GetAppointmentByIdAsync(id);
             if (appointment == null) return NotFound();
 
             appointment.PatientId = dto.PatientId; appointment.DoctorId = dto.DoctorId;
             appointment.AppointmentDate = dto.AppointmentDate; appointment.StatusId = dto.StatusId;
 
-            await _context.SaveChangesAsync();
+            await _repo.SaveChangesAsync();
             return NoContent();
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteAppointment(int id)
         {
-            var appointment = await _context.Appointments.FindAsync(id);
-            if (appointment == null) return NotFound();
-
-            _context.Appointments.Remove(appointment);
-            await _context.SaveChangesAsync();
+            var deleted = await _repo.DeleteAppointmentAsync(id);
+            if (!deleted) return NotFound();
             return NoContent();
         }
 
@@ -99,9 +94,9 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet("statuses")]
         public async Task<IActionResult> GetAllStatuses()
         {
-            var statuses = await _context.AppointmentStatuses
+            var statuses = (await _repo.GetAllStatusesAsync())
                 .Select(s => new AppointmentStatusDto { Id = s.Id, Name = s.Name })
-                .ToListAsync();
+                .ToList();
 
             return Ok(statuses);
         }
@@ -110,30 +105,26 @@ namespace Hospital_Management.Api.Controllers
         public async Task<IActionResult> CreateStatus(CreateAppointmentStatusDto dto)
         {
             var status = new AppointmentStatus { Name = dto.Name };
-            _context.AppointmentStatuses.Add(status);
-            await _context.SaveChangesAsync();
+            await _repo.AddStatusAsync(status);
             return Created($"api/appointments/statuses", new AppointmentStatusDto { Id = status.Id, Name = status.Name });
         }
 
         [HttpPut("statuses/{id}")]
         public async Task<IActionResult> UpdateStatus(int id, UpdateAppointmentStatusDto dto)
         {
-            var status = await _context.AppointmentStatuses.FindAsync(id);
+            var status = await _repo.GetStatusByIdAsync(id);
             if (status == null) return NotFound();
 
             status.Name = dto.Name;
-            await _context.SaveChangesAsync();
+            await _repo.SaveChangesAsync();
             return NoContent();
         }
 
         [HttpDelete("statuses/{id}")]
         public async Task<IActionResult> DeleteStatus(int id)
         {
-            var status = await _context.AppointmentStatuses.FindAsync(id);
-            if (status == null) return NotFound();
-
-            _context.AppointmentStatuses.Remove(status);
-            await _context.SaveChangesAsync();
+            var deleted = await _repo.DeleteStatusAsync(id);
+            if (!deleted) return NotFound();
             return NoContent();
         }
 
@@ -142,12 +133,12 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet("admissions")]
         public async Task<IActionResult> GetAllAdmissions()
         {
-            var admissions = await _context.Admissions
+            var admissions = (await _repo.GetAllAdmissionsAsync())
                 .Select(a => new AdmissionDto
                 {
                     Id = a.Id, PatientId = a.PatientId,
                     AdmissionDate = a.AdmissionDate, PatientName = a.Patient!.FullName
-                }).ToListAsync();
+                }).ToList();
 
             return Ok(admissions);
         }
@@ -155,16 +146,14 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet("admissions/{id}")]
         public async Task<IActionResult> GetAdmissionById(int id)
         {
-            var admission = await _context.Admissions
-                .Where(a => a.Id == id)
-                .Select(a => new AdmissionDto
-                {
-                    Id = a.Id, PatientId = a.PatientId,
-                    AdmissionDate = a.AdmissionDate, PatientName = a.Patient!.FullName
-                }).FirstOrDefaultAsync();
+            var a = await _repo.GetAdmissionByIdAsync(id);
+            if (a == null) return NotFound();
 
-            if (admission == null) return NotFound();
-            return Ok(admission);
+            return Ok(new AdmissionDto
+            {
+                Id = a.Id, PatientId = a.PatientId,
+                AdmissionDate = a.AdmissionDate, PatientName = a.Patient!.FullName
+            });
         }
 
         [HttpPost("admissions")]
@@ -175,30 +164,26 @@ namespace Hospital_Management.Api.Controllers
                 PatientId = dto.PatientId, AdmissionDate = dto.AdmissionDate
             };
 
-            _context.Admissions.Add(admission);
-            await _context.SaveChangesAsync();
+            await _repo.AddAdmissionAsync(admission);
             return Created($"api/appointments/admissions/{admission.Id}", dto);
         }
 
         [HttpPut("admissions/{id}")]
         public async Task<IActionResult> UpdateAdmission(int id, UpdateAdmissionDto dto)
         {
-            var admission = await _context.Admissions.FindAsync(id);
+            var admission = await _repo.GetAdmissionByIdAsync(id);
             if (admission == null) return NotFound();
 
             admission.AdmissionDate = dto.AdmissionDate;
-            await _context.SaveChangesAsync();
+            await _repo.SaveChangesAsync();
             return NoContent();
         }
 
         [HttpDelete("admissions/{id}")]
         public async Task<IActionResult> DeleteAdmission(int id)
         {
-            var admission = await _context.Admissions.FindAsync(id);
-            if (admission == null) return NotFound();
-
-            _context.Admissions.Remove(admission);
-            await _context.SaveChangesAsync();
+            var deleted = await _repo.DeleteAdmissionAsync(id);
+            if (!deleted) return NotFound();
             return NoContent();
         }
 
@@ -207,13 +192,13 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet("discharges")]
         public async Task<IActionResult> GetAllDischarges()
         {
-            var discharges = await _context.Discharges
+            var discharges = (await _repo.GetAllDischargesAsync())
                 .Select(d => new DischargeDto
                 {
                     Id = d.Id, PatientId = d.PatientId, AdmissionId = d.AdmissionId,
                     DischargeDate = d.DischargeDate, DischargeNotes = d.DischargeNotes,
                     PatientName = d.Patient!.FullName
-                }).ToListAsync();
+                }).ToList();
 
             return Ok(discharges);
         }
@@ -221,17 +206,15 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet("discharges/{id}")]
         public async Task<IActionResult> GetDischargeById(int id)
         {
-            var discharge = await _context.Discharges
-                .Where(d => d.Id == id)
-                .Select(d => new DischargeDto
-                {
-                    Id = d.Id, PatientId = d.PatientId, AdmissionId = d.AdmissionId,
-                    DischargeDate = d.DischargeDate, DischargeNotes = d.DischargeNotes,
-                    PatientName = d.Patient!.FullName
-                }).FirstOrDefaultAsync();
+            var d = await _repo.GetDischargeByIdAsync(id);
+            if (d == null) return NotFound();
 
-            if (discharge == null) return NotFound();
-            return Ok(discharge);
+            return Ok(new DischargeDto
+            {
+                Id = d.Id, PatientId = d.PatientId, AdmissionId = d.AdmissionId,
+                DischargeDate = d.DischargeDate, DischargeNotes = d.DischargeNotes,
+                PatientName = d.Patient!.FullName
+            });
         }
 
         [HttpPost("discharges")]
@@ -243,32 +226,28 @@ namespace Hospital_Management.Api.Controllers
                 DischargeDate = dto.DischargeDate, DischargeNotes = dto.DischargeNotes
             };
 
-            _context.Discharges.Add(discharge);
-            await _context.SaveChangesAsync();
+            await _repo.AddDischargeAsync(discharge);
             return Created($"api/appointments/discharges/{discharge.Id}", dto);
         }
 
         [HttpPut("discharges/{id}")]
         public async Task<IActionResult> UpdateDischarge(int id, UpdateDischargeDto dto)
         {
-            var discharge = await _context.Discharges.FindAsync(id);
+            var discharge = await _repo.GetDischargeByIdAsync(id);
             if (discharge == null) return NotFound();
 
             discharge.DischargeDate = dto.DischargeDate;
             discharge.DischargeNotes = dto.DischargeNotes;
 
-            await _context.SaveChangesAsync();
+            await _repo.SaveChangesAsync();
             return NoContent();
         }
 
         [HttpDelete("discharges/{id}")]
         public async Task<IActionResult> DeleteDischarge(int id)
         {
-            var discharge = await _context.Discharges.FindAsync(id);
-            if (discharge == null) return NotFound();
-
-            _context.Discharges.Remove(discharge);
-            await _context.SaveChangesAsync();
+            var deleted = await _repo.DeleteDischargeAsync(id);
+            if (!deleted) return NotFound();
             return NoContent();
         }
     }

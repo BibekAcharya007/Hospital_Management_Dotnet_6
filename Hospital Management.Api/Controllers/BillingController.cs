@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Hospital_Management.Api.Data;
+using Microsoft.AspNetCore.Authorization;
 using Hospital_Management.Api.DTOs.Billing;
 using Hospital_Management.Api.Filters;
 using Hospital_Management.Api.Models.Billing;
+using Hospital_Management.Api.Repositories.Interfaces;
 
 namespace Hospital_Management.Api.Controllers
 {
@@ -11,13 +11,14 @@ namespace Hospital_Management.Api.Controllers
     [Route("api/[controller]")]
     [ValidateModel]
     [ApiResponseWrapper]
+    [Authorize(Roles = "Admin,Doctor")]
     public class BillingController : ControllerBase
     {
-        private readonly HospitalDbContext _context;
+        private readonly IBillingRepository _repo;
 
-        public BillingController(HospitalDbContext context)
+        public BillingController(IBillingRepository repo)
         {
-            _context = context;
+            _repo = repo;
         }
 
         // ───────────── BILLS ─────────────
@@ -25,13 +26,13 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAllBills()
         {
-            var bills = await _context.Bills
+            var bills = (await _repo.GetAllBillsAsync())
                 .Select(b => new BillDto
                 {
                     Id = b.Id, PatientId = b.PatientId,
                     TotalAmount = b.TotalAmount, IsPaid = b.IsPaid,
                     PatientName = b.Patient!.FullName
-                }).ToListAsync();
+                }).ToList();
 
             return Ok(bills);
         }
@@ -39,17 +40,15 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetBillById(int id)
         {
-            var bill = await _context.Bills
-                .Where(b => b.Id == id)
-                .Select(b => new BillDto
-                {
-                    Id = b.Id, PatientId = b.PatientId,
-                    TotalAmount = b.TotalAmount, IsPaid = b.IsPaid,
-                    PatientName = b.Patient!.FullName
-                }).FirstOrDefaultAsync();
+            var b = await _repo.GetBillByIdAsync(id);
+            if (b == null) return NotFound();
 
-            if (bill == null) return NotFound();
-            return Ok(bill);
+            return Ok(new BillDto
+            {
+                Id = b.Id, PatientId = b.PatientId,
+                TotalAmount = b.TotalAmount, IsPaid = b.IsPaid,
+                PatientName = b.Patient!.FullName
+            });
         }
 
         [HttpPost]
@@ -60,31 +59,27 @@ namespace Hospital_Management.Api.Controllers
                 PatientId = dto.PatientId, TotalAmount = dto.TotalAmount, IsPaid = dto.IsPaid
             };
 
-            _context.Bills.Add(bill);
-            await _context.SaveChangesAsync();
+            await _repo.AddBillAsync(bill);
             return CreatedAtAction(nameof(GetBillById), new { id = bill.Id }, dto);
         }
 
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateBill(int id, UpdateBillDto dto)
         {
-            var bill = await _context.Bills.FindAsync(id);
+            var bill = await _repo.GetBillByIdAsync(id);
             if (bill == null) return NotFound();
 
             bill.TotalAmount = dto.TotalAmount; bill.IsPaid = dto.IsPaid;
 
-            await _context.SaveChangesAsync();
+            await _repo.SaveChangesAsync();
             return NoContent();
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteBill(int id)
         {
-            var bill = await _context.Bills.FindAsync(id);
-            if (bill == null) return NotFound();
-
-            _context.Bills.Remove(bill);
-            await _context.SaveChangesAsync();
+            var deleted = await _repo.DeleteBillAsync(id);
+            if (!deleted) return NotFound();
             return NoContent();
         }
 
@@ -93,13 +88,12 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet("{billId}/items")]
         public async Task<IActionResult> GetBillItems(int billId)
         {
-            var items = await _context.BillItems
-                .Where(bi => bi.BillId == billId)
+            var items = (await _repo.GetBillItemsByBillIdAsync(billId))
                 .Select(bi => new BillItemDto
                 {
                     Id = bi.Id, BillId = bi.BillId,
                     Description = bi.Description, Amount = bi.Amount
-                }).ToListAsync();
+                }).ToList();
 
             return Ok(items);
         }
@@ -112,31 +106,27 @@ namespace Hospital_Management.Api.Controllers
                 BillId = billId, Description = dto.Description, Amount = dto.Amount
             };
 
-            _context.BillItems.Add(item);
-            await _context.SaveChangesAsync();
+            await _repo.AddBillItemAsync(item);
             return Created($"api/billing/{billId}/items", dto);
         }
 
         [HttpPut("items/{itemId}")]
         public async Task<IActionResult> UpdateBillItem(int itemId, UpdateBillItemDto dto)
         {
-            var item = await _context.BillItems.FindAsync(itemId);
+            var item = await _repo.GetBillItemByIdAsync(itemId);
             if (item == null) return NotFound();
 
             item.Description = dto.Description; item.Amount = dto.Amount;
 
-            await _context.SaveChangesAsync();
+            await _repo.SaveChangesAsync();
             return NoContent();
         }
 
         [HttpDelete("items/{itemId}")]
         public async Task<IActionResult> DeleteBillItem(int itemId)
         {
-            var item = await _context.BillItems.FindAsync(itemId);
-            if (item == null) return NotFound();
-
-            _context.BillItems.Remove(item);
-            await _context.SaveChangesAsync();
+            var deleted = await _repo.DeleteBillItemAsync(itemId);
+            if (!deleted) return NotFound();
             return NoContent();
         }
 
@@ -145,16 +135,14 @@ namespace Hospital_Management.Api.Controllers
         [HttpGet("{billId}/insurance")]
         public async Task<IActionResult> GetInsuranceClaim(int billId)
         {
-            var claim = await _context.InsuranceClaims
-                .Where(ic => ic.BillId == billId)
-                .Select(ic => new InsuranceClaimDto
-                {
-                    Id = ic.Id, BillId = ic.BillId,
-                    ProviderName = ic.ProviderName, Status = ic.Status
-                }).FirstOrDefaultAsync();
+            var ic = await _repo.GetInsuranceClaimByBillIdAsync(billId);
+            if (ic == null) return NotFound();
 
-            if (claim == null) return NotFound();
-            return Ok(claim);
+            return Ok(new InsuranceClaimDto
+            {
+                Id = ic.Id, BillId = ic.BillId,
+                ProviderName = ic.ProviderName, Status = ic.Status
+            });
         }
 
         [HttpPost("{billId}/insurance")]
@@ -165,31 +153,27 @@ namespace Hospital_Management.Api.Controllers
                 BillId = billId, ProviderName = dto.ProviderName, Status = dto.Status
             };
 
-            _context.InsuranceClaims.Add(claim);
-            await _context.SaveChangesAsync();
+            await _repo.AddInsuranceClaimAsync(claim);
             return Created($"api/billing/{billId}/insurance", dto);
         }
 
         [HttpPut("insurance/{claimId}")]
         public async Task<IActionResult> UpdateInsuranceClaim(int claimId, UpdateInsuranceClaimDto dto)
         {
-            var claim = await _context.InsuranceClaims.FindAsync(claimId);
+            var claim = await _repo.GetInsuranceClaimByIdAsync(claimId);
             if (claim == null) return NotFound();
 
             claim.ProviderName = dto.ProviderName; claim.Status = dto.Status;
 
-            await _context.SaveChangesAsync();
+            await _repo.SaveChangesAsync();
             return NoContent();
         }
 
         [HttpDelete("insurance/{claimId}")]
         public async Task<IActionResult> DeleteInsuranceClaim(int claimId)
         {
-            var claim = await _context.InsuranceClaims.FindAsync(claimId);
-            if (claim == null) return NotFound();
-
-            _context.InsuranceClaims.Remove(claim);
-            await _context.SaveChangesAsync();
+            var deleted = await _repo.DeleteInsuranceClaimAsync(claimId);
+            if (!deleted) return NotFound();
             return NoContent();
         }
     }
