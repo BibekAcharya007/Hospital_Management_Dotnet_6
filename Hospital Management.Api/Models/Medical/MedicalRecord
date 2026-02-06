@@ -1,0 +1,21 @@
+using HospitalManagement.Api.Models.Doctors;
+using HospitalManagement.Api.Models.Patients;
+using HospitalManagement.Api.Models.Patients;
+using System;
+
+namespace HospitalApi.Models.Clinical
+{
+    public class MedicalRecord
+    {
+        public int Id { get; set; }
+
+        public int PatientId { get; set; }
+        public int DoctorId { get; set; }
+
+        public string? Notes { get; set; }
+        public DateTime CreatedAt { get; set; }
+
+        public Patient Patient { get; set; }
+        public Doctor Doctor { get; set; }
+    }
+}
