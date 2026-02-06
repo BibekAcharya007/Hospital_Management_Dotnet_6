@@ -3,10 +3,6 @@
     public class Medicine
     {
         public int Id { get; set; }
-
-       public int PatientId { get; set; }
-       public int DoctorId { get; set; }
-
-       public DateTime DateIssued { get; set; }
+        public string? Name { get; set; }
     }
 }
