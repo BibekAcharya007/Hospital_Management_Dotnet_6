@@ -6,6 +6,6 @@
         public int MedicalRecordId { get; set; }
 
         public string? Description { get; set; }
-       public MedicalRecord? MedicalRecord { get; set; }
+        public MedicalRecord? MedicalRecord { get; set; }
     }
 }
