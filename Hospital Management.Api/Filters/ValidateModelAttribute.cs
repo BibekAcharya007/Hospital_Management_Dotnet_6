@@ -3,10 +3,6 @@ using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace Hospital_Management.Api.Filters
 {
-    /// <summary>
-    /// Action filter that validates ModelState before the action executes.
-    /// Returns 400 Bad Request with validation errors if the model is invalid.
-    /// </summary>
     public class ValidateModelAttribute : ActionFilterAttribute
     {
         public override void OnActionExecuting(ActionExecutingContext context)

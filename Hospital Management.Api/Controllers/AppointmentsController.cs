@@ -9,10 +9,10 @@ using Hospital_Management.Api.Repositories.Interfaces;
 
 namespace Hospital_Management.Api.Controllers
 {
-    [ApiController]
-    [Route("api/[controller]")]
-    [ValidateModel]
-    [ApiResponseWrapper]
+    [ApiController]//enables api specific behaviour
+    [Route("api/[controller]")]//defines the url
+    [ValidateModel]//Automatically checks if the incoming request data (DTO) is valid
+    [ApiResponseWrapper]//result filter 
     [Authorize(Roles = "Admin,Doctor,Patient")]
     public class AppointmentsController : ControllerBase
     {
